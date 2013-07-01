@@ -12,9 +12,14 @@
 	color: white;
 }
 			
-.chart rect {
+rect.allbar {
 	stroke: white;
 	fill: steelblue;
+}
+
+rect.newbar {
+	stroke: white;
+	fill: #BFD4EB;
 }
 			
 .chart text {

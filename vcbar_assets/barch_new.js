@@ -4,41 +4,51 @@
 *   using Crunchbase data.
 *
 *   Graphite compressed into diamond-like code
-*   through sheer strength by Jerry Neumann, 2011.
+*   through sheer strength by Jerry Neumann, 2011, 2012.
 *
 *   No copyright. But if you use the code, show me some link love
-*   at neuvc.com or reactionwheel.blogspot.com
+*   at neuvc.com or reactionwheel.blogspot.com and
+*   follow me at @ganeumann
 *
+*   Updated: 06/30/13 -- Philipp Tsipman
 */
 
-var vcf = {'neu':[['33across','a',54],['33across','b',72],["magnetic","seed",51],["magnetic","a",61],
-				["handipoints","a",44],["pinch-media","a",41],["flurry","b",61],["banksimple","seed",60],["banksimple","a",68],
-				["xa-net","a",50],["the-trade-desk","seed",63],["performline","seed",64],["performline","a",77],
-				["metamarkets","seed",65],["metamarkets","a",77],["placeiq","seed",70],["awe-sm","seed",72],["yieldbot","seed",72],
-				["profitably","a",75],["datadog","seed",76],["media-armor","seed",77],["savings-bird","seed",79]]},
+var crunchbaseAPIkey = "";  // ADD YOUR OWN KEY
+
+var today = new Date(),
 	byear = 2005,
-	eyear = 2011,
-	months = (eyear - byear + 1) * 12,
-	years = [],
+	eyear = today.getFullYear(),
+	months = (eyear - byear +1) * 12,
+	thismonth = months+today.getMonth()-12,
 	totw = 960,
 	w = Math.floor(totw / months),
-	h = 175;	
+	h = 175,
+	vcf;	
 
-for (var i=byear;i<=eyear;i++) {years.push(i)};
+for (var years=[],i=byear;i<=eyear;i++) {years.push(i)};
 
 var getdata = function(vclist,rnddict) {
-	var dat = [], i, j, idx, vctxs;
+	var dat = [], i, j, idx, vctxs, nm, alreadyfunded, monthcos, afx;
 	for (i=0; i < months; i+=1) {
-		dat[i] = {'num':0,'names':''};
+		dat[i] = {'num':0, 'new':0, 'names':'', 'newnames':''};
 	};
-	
+	// have to order investments by date
 	for (i=0;i<vclist.length;i+=1) {
+		alreadyfunded=[];
 		vctxs=vcf[vclist[i]];
 		for (j=0;j<vctxs.length;j+=1) {
+			idx = vctxs[j][2];
+			nm = vctxs[j][0];
+			afx = alreadyfunded.indexOf(nm)==-1;
+			if (afx) { alreadyfunded.push(nm); };
 			if (rnddict[vctxs[j][1]]) {
-				idx = vctxs[j][2];
-				dat[idx]['num'] += 1;
-				dat[idx]['names'] += vctxs[j][0]+", ";
+				if (dat[idx]['names'].indexOf(nm) == -1 && dat[idx]['newnames'].indexOf(nm) == -1) {
+					dat[idx]['num'] += 1;
+					if (afx) {
+						dat[idx]['new']+=1;
+						dat[idx]['newnames'] += nm+", ";
+					} else {dat[idx]['names'] += nm+", ";};
+				};
 			};
 		};
 	};
@@ -48,8 +58,16 @@ var getdata = function(vclist,rnddict) {
 var bchart = function (data) {
 	$(".chart").remove();
 
+	var running=0, tavg=[];
+
 	for (var lgst=0, i=0;i<data.length;i++) {
 		if (data[i]['num'] > lgst) { lgst = data[i]['num'] };
+		if (i<12) {
+			running += data[i]['num'];
+		} else {
+			running = running - data[i-12]['num'] + data[i]['num'];
+			tavg[i]=running/12;
+		};
 	};
 
 	var tks = Math.min(lgst,5);
@@ -90,16 +108,25 @@ var bchart = function (data) {
 			.attr("text-anchor","end")
 			.text(String);
 	
-	var bars = chart.selectAll("rect")
-			.data(data)
-		.enter().append("svg:rect")
+	var barsb = chart.selectAll("rect")
+			.data(data).enter(),
+		bars1=barsb.append("svg:rect")
+			.attr("class","allbar")
 			.attr("x", function(d, i) { return x(i) - .5; })
 			.attr("y", function(d) { return h - y(d.num) - .5; })
 			.attr("width",w)
-			.attr("height", function(d) { return y(d.num); });
+			.attr("height", function(d) { return y(d.num); }),
+		bars2=barsb.append("svg:rect")
+			.attr("class","newbar")
+			.attr("x", function(d, i) { return x(i) - .5; })
+			.attr("y", function(d) { return h - y(d.new) - .5; })
+			.attr("width",w)
+			.attr("height", function(d) { return y(d.new); })
 	
-	bars.append("svg:title")
+	bars1.append("svg:title")
 			.text(function(d) { return d.names.slice(0,-2); });
+	bars2.append("svg:title")
+			.text(function(d) { return d.newnames.slice(0,-2); });
 
 	chart.selectAll("line.vrule")
 			.data(years)
@@ -134,6 +161,18 @@ var bchart = function (data) {
 		.attr("x2",0)
 		.attr("y2",.5)
 		.attr("stroke","#000");
+		
+	if (lgst>0) {
+		for (var i=13;i<thismonth;i++) {
+			chart.append("svg:line")
+				.attr("x1",x(i-1)+w/2)
+				.attr("y1",h-y(tavg[i-1]))
+				.attr("x2",x(i)+w/2)
+				.attr("y2",h-y(tavg[i]))
+				.attr("stroke","#F60")
+				.attr("stroke-width",1.1);
+		};
+	};
 			
 	return chart		
 };
@@ -159,11 +198,21 @@ var goDo = function(vclist,rndlist) {
 	return bchart(data);
 };
 
+var sortList = function(a,b) {
+	// sort  a=[name,round,idx], b=[name,round,idx] by idx
+	var a2 = a[2],
+		b2 = b[2];
+	if (a2<b2) return -1;
+	if (a2==b2) return 0;
+	return 1;
+};
+
 $(document).ready(function () {
 	
 	var parseCB = function(jsn) {
 		var invs = [], yr, mo;
 		var vc = jsn["permalink"];
+		if (jsn["crunchbase_url"][26]=="c") {vc = "-"+vc;};
 		if ("investments" in jsn) {
 			for (var i in jsn["investments"]) {
 				var j = jsn["investments"][i];
@@ -181,7 +230,7 @@ $(document).ready(function () {
 				};
 			};
 		};
-		vcf[vc] = invs;
+		vcf[vc] = invs.sort(sortList);
 		vclist.push(vc);
 		$("#"+vc).addClass("red");
 		return goDo(vclist,rnds);
@@ -205,7 +254,9 @@ $(document).ready(function () {
 		for (i in vnms) {
 			if (vcs.indexOf(vnms[i]) != -1) {
 				if (!(vnms[i] in vcf)) {
-					$.getJSON("http://api.crunchbase.com/v/1/financial-organization/"+vnms[i]+".js?callback=?",parseCB);
+					if (vnms[i][0] != "-") {
+						$.getJSON("http://api.crunchbase.com/v/1/financial-organization/"+vnms[i]+".js?api_key="+crunchbaseAPIkey+"&callback=?",parseCB); } else {
+						$.getJSON("http://api.crunchbase.com/v/1/company/"+vnms[i].slice(1,vnms[i].length)+".js?api_key="+crunchbaseAPIkey+"&callback=?",parseCB); }
 				} else {
 					vclist.push(vnms[i]);
 					$("#"+vnms[i]).addClass("red");
@@ -236,9 +287,9 @@ $(document).ready(function () {
 			'insight-venture-partners','rho-capital-ventures','contour-venture','ascend-venture-group',
 			'rre-ventures','greenhill-savp','hudson-ventures','starvest-partners','greycroft-partners',
 			'softbank-capital','apax-partners','venrock','constellation-ventures','boldstart-ventures',
-			'ia-venture-strategies','betaworks-3','metamorphic-ventures-llc','lerer-ventures','nyc-seed',
+			'ia-venture-strategies','-betaworks','metamorphic-ventures-llc','lerer-ventures','nyc-seed',
 			'founder-collective','village-ventures','first-round-capital','firstmark-capital','zelkova-ventures',
-			'crossbar-capital','rose-tech-ventures','dfj-gotham-ventures','great-oaks-venture-capital','neu']);
+			'crossbar-capital','rose-tech-ventures','dfj-gotham-ventures','great-oaks-venture-capital','neu','kbs-p-ventures']);
 	});
 
 	$("#old-school").click(function () {
@@ -284,7 +335,9 @@ $(document).ready(function () {
 		var vc = $(this).text();
 		if (!$(this).hasClass("red")) {
 			if (!(vc in vcf)) {
-				$.getJSON("http://api.crunchbase.com/v/1/financial-organization/"+vc+".js?callback=?",parseCB);
+				if (vc[0] != "-") {
+						$.getJSON("http://api.crunchbase.com/v/1/financial-organization/"+vc+".js?api_key="+crunchbaseAPIkey+"&callback=?",parseCB); } else {
+						$.getJSON("http://api.crunchbase.com/v/1/company/"+vc.slice(1,vc.length)+".js?api_key="+crunchbaseAPIkey+"&callback=?",parseCB); };
 				return;
 			} else {
 				vclist.push(vc);
